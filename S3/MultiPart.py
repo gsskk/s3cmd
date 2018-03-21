@@ -167,7 +167,12 @@ class MultiPartUpload(object):
                 warning("MultiPart: size (%d vs %d) does not match for %s part %d, reuploading."
                         % (int(remote_status['size']), chunk_size, self.uri, seq))
 
-        headers = { "content-length": str(chunk_size) }
+        headers_baseline = self.headers_baseline
+        headers = {"content-length": str(chunk_size)}
+        if "x-amz-server-side-encryption-customer-key" in headers_baseline:
+            headers["x-amz-server-side-encryption-customer-algorithm"] = headers_baseline["x-amz-server-side-encryption-customer-algorithm"]
+            headers["x-amz-server-side-encryption-customer-key"] = headers_baseline["x-amz-server-side-encryption-customer-key"]
+            headers["x-amz-server-side-encryption-customer-key-md5"] = headers_baseline["x-amz-server-side-encryption-customer-key-md5"]
         query_string_params = {'partNumber':'%s' % seq,
                                'uploadId': self.upload_id}
         request = self.s3.create_request("OBJECT_PUT", uri = self.uri,
