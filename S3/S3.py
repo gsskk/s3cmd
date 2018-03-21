@@ -708,10 +708,13 @@ class S3(object):
         response = self.send_file(request, src_stream, labels)
         return response
 
-    def object_get(self, uri, stream, dest_name, start_position = 0, extra_label = ""):
+    def object_get(self, uri, stream, dest_name, extra_headers=None, start_position = 0, extra_label = ""):
         if uri.type != "s3":
             raise ValueError("Expected URI type 's3', got '%s'" % uri.type)
-        request = self.create_request("OBJECT_GET", uri = uri)
+        headers = SortedDict(ignore_case = True)
+        if extra_headers:
+            headers.update(extra_headers)
+        request = self.create_request("OBJECT_GET", uri = uri, headers = headers)
         labels = { 'source' : uri.uri(), 'destination' : dest_name, 'extra' : extra_label }
         response = self.recv_file(request, stream, labels, start_position)
         return response
@@ -1573,18 +1576,28 @@ class S3(object):
             ## Non-recoverable error
             raise S3Error(response)
 
-        debug("MD5 sums: computed=%s, received=%s" % (md5_computed, response["headers"].get('etag', '').strip('"\'')))
-        ## when using KMS encryption, MD5 etag value will not match
-        md5_from_s3 = response["headers"].get("etag", "").strip('"\'')
-        if ('-' not in md5_from_s3) and (md5_from_s3 != md5_hash.hexdigest()) and response["headers"].get("x-amz-server-side-encryption") != 'aws:kms':
-            warning("MD5 Sums don't match!")
-            if retries:
-                warning("Retrying upload of %s" % (filename))
-                return self.send_file(request, stream, labels, buffer, throttle,
-                                      retries - 1, offset, chunk_size, use_expect_continue)
-            else:
-                warning("Too many failures. Giving up on '%s'" % (filename))
-                raise S3UploadError
+        if self.config.sse_customer_key:
+            if response["headers"]["x-amz-server-side-encryption-customer-key-md5"] != self.config.extra_headers["x-amz-server-side-encryption-customer-key-md5"]:
+                warning("MD5 of customer key don't match!")
+                if retries:
+                    warning("Retrying upload of %s" % (file.name))
+                    return self.send_file(request, file, labels, buffer, throttle, retries - 1, offset, chunk_size)
+                else:
+                    warning("Too many failures. Giving up on '%s'" % (file.name))
+                    raise S3UploadError
+        else:
+            debug("MD5 sums: computed=%s, received=%s" % (md5_computed, response["headers"].get('etag', '').strip('"\'')))
+            ## when using KMS encryption, MD5 etag value will not match
+            md5_from_s3 = response["headers"].get("etag", "").strip('"\'')
+            if ('-' not in md5_from_s3) and (md5_from_s3 != md5_hash.hexdigest()) and response["headers"].get("x-amz-server-side-encryption") != 'aws:kms':
+                warning("MD5 Sums don't match!")
+                if retries:
+                    warning("Retrying upload of %s" % (filename))
+                    return self.send_file(request, stream, labels, buffer, throttle,
+                                          retries - 1, offset, chunk_size, use_expect_continue)
+                else:
+                    warning("Too many failures. Giving up on '%s'" % (filename))
+                    raise S3UploadError
 
         return response
 
