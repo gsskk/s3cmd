@@ -428,8 +428,9 @@ def fetch_remote_list(args, require_attribs = False, recursive = None, uri_param
                 'dev' : None,
                 'inode' : None,
             }
-            if '-' in rem_list[key]['md5']: # always get it for multipart uploads
-                _get_remote_attribs(S3Uri(object_uri_str), rem_list[key])
+            # Fix multipart get/cp recursively with sse_customer_key
+            # if '-' in rem_list[key]['md5']: # always get it for multipart uploads
+            #    _get_remote_attribs(S3Uri(object_uri_str), rem_list[key])
             md5 = rem_list[key]['md5']
             rem_list.record_md5(key, md5)
             total_size += int(object['Size'])
